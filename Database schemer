@@ -1,0 +1,23 @@
+// User Model
+{
+  email: String,
+  password: String (hashed),
+  freeTrialsUsed: { type: Number, default: 0 },
+  extraCredits: { type: Number, default: 0 }
+}
+
+// DrivingSession Model
+{
+  userId: ObjectId,
+  mistakes: [String],
+  corrections: [String],
+  date: Date
+}
+
+// Car Model
+{
+  name: String,
+  price: String,
+  imageUrl: String,
+  isHighDemand: Boolean
+}
