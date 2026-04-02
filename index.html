@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Khushi Motors | Futuristic Virtual Driving</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #0a0a0a; color: white; overflow-x: hidden; }
+    /* Navbar */
+    .navbar { display: flex; justify-content: space-between; padding: 20px 40px; background: rgba(0,0,0,0.9); position: fixed; width: 100%; z-index: 100; backdrop-filter: blur(10px); }
+    .logo { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, #ff6a00, #ee0979); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .auth-buttons button { background: transparent; border: 1px solid #ff6a00; color: white; padding: 8px 20px; margin-left: 15px; border-radius: 40px; cursor: pointer; transition: 0.3s; }
+    .auth-buttons button:hover { background: #ff6a00; }
+    /* Hero Showroom */
+    .showroom { padding: 120px 40px 60px; text-align: center; }
+    .cars-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; margin-top: 40px; }
+    .car-card { background: #1a1a1a; border-radius: 20px; overflow: hidden; width: 300px; transition: transform 0.3s; border: 1px solid #333; }
+    .car-card:hover { transform: translateY(-10px); border-color: #ff6a00; }
+    .car-card img { width: 100%; height: 180px; object-fit: cover; }
+    .car-info { padding: 20px; }
+    .car-price { color: #ff6a00; font-weight: 800; margin: 10px 0; }
+    /* Driving Simulator */
+    .simulator-container { position: relative; width: 100%; height: 70vh; background: #111; margin: 40px 0; border-radius: 30px; overflow: hidden; }
+    #driveCanvas { width: 100%; height: 100%; display: block; }
+    .drive-controls { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 20px; z-index: 10; }
+    .drive-controls button { background: #ff6a00; border: none; padding: 10px 20px; margin: 5px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+    .trial-info { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.8); padding: 12px 20px; border-radius: 20px; font-size: 14px; border-left: 4px solid #ff6a00; }
+    /* Modals */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content { background: #1e1e1e; padding: 30px; border-radius: 30px; width: 90%; max-width: 400px; }
+    input { width: 100%; padding: 12px; margin: 10px 0; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 10px; }
+    button { background: #ff6a00; color: white; border: none; padding: 12px; border-radius: 40px; cursor: pointer; width: 100%; font-weight: bold; }
+    .diagnostic-box { background: #111; padding: 20px; border-radius: 20px; margin: 20px; border-left: 4px solid #00ffaa; }
+  </style>
+</head>
+<body>
+<div class="navbar">
+  <div class="logo">⚡ KHUSHI MOTORS</div>
+  <div class="auth-buttons" id="authButtons">
+    <button onclick="openModal('login')">Login</button>
+    <button onclick="openModal('register')">Register</button>
+  </div>
+  <div id="userInfo" style="display: none;">Welcome, <span id="userEmail"></span> | <button onclick="logout()" style="background:#333; width:auto;">Logout</button></div>
+</div>
+
+<div class="showroom">
+  <h1>Experience the Future of Driving</h1>
+  <p>Virtual test drives · AI Mechanic · Ultra-luxury fleet</p>
+  <div class="cars-grid" id="carsGrid"></div>
+</div>
+
+<div class="simulator-container">
+  <canvas id="driveCanvas"></canvas>
+  <div class="drive-controls">
+    <button id="startDriveBtn">🚗 START VIRTUAL DRIVE</button>
+    <button id="stopDriveBtn" disabled>⏹️ END SESSION</button>
+    <button id="diagnoseBtn" disabled>🔧 MECHANIC DIAGNOSIS</button>
+  </div>
+  <div class="trial-info" id="trialInfo">Loading...</div>
+</div>
+
+<div id="diagnosticModal" class="modal">
+  <div class="modal-content">
+    <h3>🔍 Mechanic Report</h3>
+    <div id="diagnosticText"></div>
+    <button onclick="closeModal('diagnosticModal')">Close</button>
+  </div>
+</div>
+
+<div id="authModal" class="modal">
+  <div class="modal-content" id="authForm">
+    <h3 id="authTitle">Login</h3>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <button id="authSubmitBtn">Submit</button>
+    <button onclick="closeModal('authModal')">Cancel</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  // ---------- GLOBAL STATE ----------
+  let token = localStorage.getItem('token');
+  let currentUser = null;
+  let driveActive = false;
+  let mistakesLog = [];
+  let carSpeed = 0;
+  let carPosition = { x: 0, z: 0 };
+  let scene, camera, renderer, carModel, road;
+  
+  // DOM Elements
+  const carsGrid = document.getElementById('carsGrid');
+  const startBtn = document.getElementById('startDriveBtn');
+  const stopBtn = document.getElementById('stopDriveBtn');
+  const diagnoseBtn = document.getElementById('diagnoseBtn');
+  const trialInfoDiv = document.getElementById('trialInfo');
+  
+  // Auth UI
+  function updateAuthUI() {
+    if (token) {
+      document.getElementById('authButtons').style.display = 'none';
+      document.getElementById('userInfo').style.display = 'flex';
+      fetchUserData();
+    } else {
+      document.getElementById('authButtons').style.display = 'flex';
+      document.getElementById('userInfo').style.display = 'none';
+    }
+  }
+  
+  async function fetchUserData() {
+    const res = await fetch('/api/driving/eligibility', { headers: { 'Authorization': `Bearer ${token}` } });
+    const data = await res.json();
+    if (res.ok) {
+      trialInfoDiv.innerHTML = `🎮 Free trials left: ${data.remainingFree} | 💰 Extra credits: ${data.extraCredits}<br>${data.canDrive ? '✅ Ready to drive' : '❌ Purchase more drives'}`;
+      if (!data.canDrive) startBtn.disabled = true;
+    }
+  }
+  
+  // Load Cars
+  async function loadCars() {
+    const res = await fetch('/api/cars');
+    const cars = await res.json();
+    carsGrid.innerHTML = cars.map(car => `
+      <div class="car-card">
+        <img src="${car.imageUrl}" alt="${car.name}">
+        <div class="car-info">
+          <h3>${car.name}</h3>
+          <div class="car-price">${car.price}</div>
+          ${car.isHighDemand ? '<span style="color:#ff6a00;">🔥 High Demand</span>' : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+  
+  // Three.js Driving Simulator Setup
+  function initDrivingSim() {
+    const canvas = document.getElementById('driveCanvas');
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111122);
+    camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    camera.position.set(0, 3, 8);
+    renderer = new THREE.WebGLRenderer({ canvas });
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    
+    // Ground
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.8 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    scene.add(ground);
+    
+    // Road markings
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xffaa44 });
+    for (let i = -15; i <= 15; i+=2) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 1), lineMat);
+      line.position.set(i, -0.4, 0);
+      scene.add(line);
+    }
+    
+    // Car model (simple box)
+    const carGroup = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1, 0.4, 2), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
+    body.position.y = 0;
+    carGroup.add(body);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 1.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+    roof.position.y = 0.35;
+    carGroup.add(roof);
+    carModel = carGroup;
+    scene.add(carModel);
+    
+    // Lights
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(5, 10, 7);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404060));
+    
+    camera.lookAt(carModel.position);
+    
+    function animate() {
+      if (!driveActive) return;
+      // Simple driving controls (arrow keys)
+      const keys = {};
+      window.addEventListener('keydown', (e) => keys[e.key] = true);
+      window.addEventListener('keyup', (e) => keys[e.key] = false);
+      
+      if (keys['ArrowUp']) carSpeed = Math.min(carSpeed + 0.05, 0.8);
+      if (keys['ArrowDown']) carSpeed = Math.max(carSpeed - 0.05, -0.3);
+      if (keys['ArrowLeft']) carModel.rotation.y += 0.05;
+      if (keys['ArrowRight']) carModel.rotation.y -= 0.05;
+      carSpeed *= 0.98;
+      
+      carModel.position.x += Math.sin(carModel.rotation.y) * carSpeed;
+      carModel.position.z += Math.cos(carModel.rotation.y) * carSpeed;
+      
+      // Boundaries & Mistake detection
+      if (Math.abs(carModel.position.x) > 12 || Math.abs(carModel.position.z) > 18) {
+        if (!mistakesLog.includes('Off-track')) mistakesLog.push('Off-track');
+        carModel.position.x = Math.min(12, Math.max(-12, carModel.position.x));
+        carModel.position.z = Math.min(18, Math.max(-18, carModel.position.z));
+      }
+      if (carSpeed > 0.6 && !mistakesLog.includes('Speeding')) mistakesLog.push('Speeding');
+      if (carSpeed < -0.2 && !mistakesLog.includes('Hard Braking')) mistakesLog.push('Hard Braking');
+      
+      camera.position.x = carModel.position.x;
+      camera.position.z = carModel.position.z + 5;
+      camera.position.y = 3;
+      camera.lookAt(carModel.position);
+      
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
+  }
+  
+  // Start Drive with eligibility check
+  startBtn.onclick = async () => {
+    if (!token) { alert('Please login first'); openModal('login'); return; }
+    const res = await fetch('/api/driving/eligibility', { headers: { 'Authorization': `Bearer ${token}` } });
+    const data = await res.json();
+    if (!data.canDrive) {
+      alert('No free trials left! Purchase extra drives.');
+      purchaseCredits();
+      return;
+    }
+    driveActive = true;
+    mistakesLog = [];
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    diagnoseBtn.disabled = true;
+    alert('Drive started! Use arrow keys. Stay on track & avoid speeding.');
+  };
+  
+  stopBtn.onclick = async () => {
+    driveActive = false;
+    stopBtn.disabled = true;
+    startBtn.disabled = false;
+    diagnoseBtn.disabled = false;
+    // Get AI corrections
+    const diagnoseRes = await fetch('/api/mechanic/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ mistakes: mistakesLog })
+    });
+    const { corrections } = await diagnoseRes.json();
+    // Save session
+    await fetch('/api/driving/save-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ mistakes: mistakesLog, corrections })
+    });
+    fetchUserData();
+    alert(`Session saved. Mistakes: ${mistakesLog.join(', ') || 'None'}`);
+  };
+  
+  diagnoseBtn.onclick = async () => {
+    const res = await fetch('/api/mechanic/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ mistakes: mistakesLog })
+    });
+    const data = await res.json();
+    document.getElementById('diagnosticText').innerHTML = `<ul>${data.corrections.map(c => `<li>🔧 ${c}</li>`).join('')}</ul>`;
+    openModal('diagnosticModal');
+  };
+  
+  // Stripe Payment
+  async function purchaseCredits() {
+    const res = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const session = await res.json();
+    window.location.href = `https://checkout.stripe.com/pay/${session.id}`;
+  }
+  
+  // Auth modals
+  function openModal(type) {
+    document.getElementById('authModal').style.display = 'flex';
+    document.getElementById('authTitle').innerText = type === 'login' ? 'Login' : 'Register';
+    document.getElementById('authSubmitBtn').onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const endpoint = type === 'login' ? '/api/login' : '/api/register';
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const data = await res.json();
+      if (res.ok) {
+        token = data.token;
+        localStorage.setItem('token', token);
+        updateAuthUI();
+        closeModal('authModal');
+        fetchUserData();
+      } else alert(data.error);
+    };
+  }
+  function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+  function logout() { localStorage.removeItem('token'); token = null; updateAuthUI(); }
+  
+  // Initialization
+  updateAuthUI();
+  loadCars();
+  initDrivingSim();
+  window.addEventListener('resize', () => {
+    const canvas = document.getElementById('driveCanvas');
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    camera.aspect = canvas.clientWidth / canvas.clientHeight;
+    camera.updateProjectionMatrix();
+  });
+</script>
+</body>
+</html>
